@@ -10,8 +10,9 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
 	"time"
+
+	"github.com/psionikangel/uuid"
 )
 
 type config struct {
@@ -28,18 +29,81 @@ type metadata struct {
 	Filename     string
 	Extension    string
 	Checksum     string
+	RunID        string
+}
+
+type run struct {
+	ID          string
+	Machinename string
+	Start       time.Time
+	End         time.Time
 }
 
 func main() {
+	// Initialize the unique id library
+	uuid.Init()
 	cfg := loadConfig()
+	runid := uuid.NewV4().String()
+	startRun(runid, *cfg)
 	for _, path := range cfg.Paths {
-		files, err := extractMetadata(path, cfg.Properties)
+		files, err := extractMetadata(path, cfg.Properties, runid)
 		if err != nil {
 			panic(err)
 		}
-		printProperties(files, cfg.Properties)
 		uploadMetadata(files, *cfg)
+		endRun(runid, *cfg)
 	}
+}
+
+func startRun(runid string, cfg config) {
+	r := new(run)
+	r.ID = runid
+	r.Start = time.Now()
+	host, err := os.Hostname()
+	if err != nil {
+		panic(err)
+	}
+	r.Machinename = host
+	url := "http://" + cfg.Server + ":" + cfg.Port + "/run"
+	js, err := json.Marshal(r)
+	if err != nil {
+		panic(err)
+	}
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(js))
+	if err != nil {
+		panic(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		panic(err)
+	}
+	defer resp.Body.Close()
+	fmt.Println("Start Run Response status", resp.Status)
+}
+
+func endRun(runid string, cfg config) {
+	r := new(run)
+	r.ID = runid
+	r.End = time.Now()
+	url := "http://" + cfg.Server + ":" + cfg.Port + "/run"
+	js, err := json.Marshal(r)
+	if err != nil {
+		panic(err)
+	}
+	req, err := http.NewRequest("PUT", url, bytes.NewBuffer(js))
+	if err != nil {
+		panic(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		panic(err)
+	}
+	defer resp.Body.Close()
+	fmt.Println("End Run Response status", resp.Status)
 }
 
 func uploadMetadata(meta []metadata, cfg config) {
@@ -62,7 +126,7 @@ func uploadMetadata(meta []metadata, cfg config) {
 	fmt.Println("Upload Response status", resp.Status)
 }
 
-func extractMetadata(path string, props []string) (meta []metadata, err error) {
+func extractMetadata(path string, props []string, runid string) (meta []metadata, err error) {
 	var results []metadata
 
 	err = filepath.Walk(path, func(path string, info os.FileInfo, err error) error {
@@ -85,33 +149,12 @@ func extractMetadata(path string, props []string) (meta []metadata, err error) {
 					meta.Checksum = checksum(path)
 				}
 			}
+			meta.RunID = runid
 		}
 		results = append(results, *meta)
 		return nil
 	})
 	return results, nil
-}
-
-func printProperties(files []metadata, props []string) {
-	for _, file := range files {
-		for _, prop := range props {
-			if prop == "path" {
-				fmt.Println(file.Path)
-			}
-			if prop == "filesize" {
-				fmt.Println(strconv.FormatInt(file.Filesize, 10))
-			}
-			if prop == "lastmodified" {
-				fmt.Println("LastModified: " + file.LastModified.Format(time.RFC3339))
-			}
-			if prop == "extension" {
-				fmt.Println("Extension: " + file.Extension)
-			}
-			if prop == "checksum" {
-				fmt.Println("Checksum: " + file.Checksum)
-			}
-		}
-	}
 }
 
 func loadConfig() *config {
