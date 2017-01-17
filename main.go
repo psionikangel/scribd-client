@@ -142,7 +142,9 @@ func extractMetadata(path string, props []string, runid string) (meta []metadata
 				meta.LastModified = info.ModTime()
 			}
 			if prop == "extension" {
-				meta.Extension = filepath.Ext(path)
+				if !info.IsDir() {
+					meta.Extension = filepath.Ext(path)
+				}
 			}
 			if prop == "checksum" {
 				if !info.IsDir() {
