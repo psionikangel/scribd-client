@@ -5,7 +5,6 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -37,6 +36,7 @@ type run struct {
 	Machinename string
 	Start       time.Time
 	End         time.Time
+	FilesCount  int64
 }
 
 func main() {
@@ -45,13 +45,15 @@ func main() {
 	cfg := loadConfig()
 	runid := uuid.NewV4().String()
 	startRun(runid, *cfg)
+	var totalCount int64
 	for _, path := range cfg.Paths {
-		files, err := extractMetadata(path, cfg.Properties, runid)
+		files, count, err := extractMetadata(path, cfg.Properties, runid)
+		totalCount = totalCount + count
 		if err != nil {
 			panic(err)
 		}
 		uploadMetadata(files, *cfg)
-		endRun(runid, *cfg)
+		endRun(runid, totalCount, *cfg)
 	}
 }
 
@@ -80,13 +82,13 @@ func startRun(runid string, cfg config) {
 		panic(err)
 	}
 	defer resp.Body.Close()
-	fmt.Println("Start Run Response status", resp.Status)
 }
 
-func endRun(runid string, cfg config) {
+func endRun(runid string, count int64, cfg config) {
 	r := new(run)
 	r.ID = runid
 	r.End = time.Now()
+	r.FilesCount = count
 	url := "http://" + cfg.Server + ":" + cfg.Port + "/run"
 	js, err := json.Marshal(r)
 	if err != nil {
@@ -103,7 +105,6 @@ func endRun(runid string, cfg config) {
 		panic(err)
 	}
 	defer resp.Body.Close()
-	fmt.Println("End Run Response status", resp.Status)
 }
 
 func uploadMetadata(meta []metadata, cfg config) {
@@ -123,10 +124,9 @@ func uploadMetadata(meta []metadata, cfg config) {
 		panic(err)
 	}
 	defer resp.Body.Close()
-	fmt.Println("Upload Response status", resp.Status)
 }
 
-func extractMetadata(path string, props []string, runid string) (meta []metadata, err error) {
+func extractMetadata(path string, props []string, runid string) (meta []metadata, count int64, err error) {
 	var results []metadata
 
 	err = filepath.Walk(path, func(path string, info os.FileInfo, err error) error {
@@ -141,6 +141,9 @@ func extractMetadata(path string, props []string, runid string) (meta []metadata
 			if prop == "lastmodified" {
 				meta.LastModified = info.ModTime()
 			}
+			if prop == "filename" {
+				meta.Filename = info.Name()
+			}
 			if prop == "extension" {
 				if !info.IsDir() {
 					meta.Extension = filepath.Ext(path)
@@ -154,9 +157,12 @@ func extractMetadata(path string, props []string, runid string) (meta []metadata
 			meta.RunID = runid
 		}
 		results = append(results, *meta)
+		if !info.IsDir() { //count only files
+			count++
+		}
 		return nil
 	})
-	return results, nil
+	return results, count, nil
 }
 
 func loadConfig() *config {
