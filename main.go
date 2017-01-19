@@ -6,8 +6,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"time"
 
@@ -142,7 +144,9 @@ func extractMetadata(path string, props []string, runid string) (meta []metadata
 				meta.LastModified = info.ModTime()
 			}
 			if prop == "filename" {
-				meta.Filename = info.Name()
+				if !info.IsDir() {
+					meta.Filename = info.Name()
+				}
 			}
 			if prop == "extension" {
 				if !info.IsDir() {
@@ -174,6 +178,17 @@ func loadConfig() *config {
 	err = json.Unmarshal(file, &cfg)
 	if err != nil {
 		panic(err)
+	}
+	if len(cfg.Paths) == 0 {
+		log.Fatal("Config Error: No paths are defined")
+	}
+	if len(cfg.Properties) == 0 {
+		log.Fatal("Config Error: No properties are defined")
+	}
+	for _, p := range cfg.Paths {
+		if !path.IsAbs(p) {
+			log.Fatalf("Config Error: %q is not an absolute path", p)
+		}
 	}
 	return cfg
 }

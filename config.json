@@ -1,6 +1,6 @@
 {
-    "paths":["/Users/tyrion/Downloads","/Users/tyrion/Documents"],
-    "properties":["path","filesize", "extension", "checksum", "lastmodified"],
+    "paths":["/Users/tyrion/Downloads", "/Users/tyrion/Documents"],
+    "properties":["path","filesize","filename","extension", "checksum", "lastmodified"],
     "server":"localhost",
     "port":"8080"
 }
