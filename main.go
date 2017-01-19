@@ -55,8 +55,8 @@ func main() {
 			panic(err)
 		}
 		uploadMetadata(files, *cfg)
-		endRun(runid, totalCount, *cfg)
 	}
+	endRun(runid, totalCount, *cfg)
 }
 
 func startRun(runid string, cfg config) {
